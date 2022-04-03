@@ -1,0 +1,448 @@
+---
+title: "Case Study: Fitness Data"
+author: "Alexandra"
+date: '2022-04-01'
+output: 
+  html_document: 
+    css: style.css
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# <span style="color: #ff4949ff;"><b>Bellabeat</b></span>
+*Project log*
+
+<span style="color: #ff4949ff;">**Customer:**</span> <br/>
+Bellabeat: Wellness products for women <br/>
+Products: <br/>
+&emsp;&emsp;•	App (Activity, Sleep, stress, menstrual cycle, mindfulness)<br/>
+&emsp;&emsp;•	Leaf (worn tracker – clip, necklace, bracelt)<br/>
+&emsp;&emsp;•	Time (worn tracker – watch)<br/>
+&emsp;&emsp;•	Spring (water bottle – water intake)<br/>
+Marketing: radio, billboards, print, television BUT focus on digital: Google search visibility, Facebook, Instagram, Youtube Ads<br/>
+Stakeholder: Urška Sršen (cofounder, chief creative officer), Sando Mur (cofounder, mathematician, part of executive team), marketing analytics team<br/>
+
+<span style="color: #ff4949ff;">**Business Task:**</span> <br/> 
+The goal of the project is to explore the user interaction with fitness devices from public data sets of market competitors. This interaction should then be narrowed down to potential Bellabeat customers, i.e., women. From there recommendations for the marketing strategy should be presented. 
+
+*Limitation:* Due to the high risk of personal identification, the access to fitness data is rare. Thus, the sample number is small. Further, public data is limited to wearable wrist devices. There is no gender or age information, which does not allow targeted mapping to the Bellabeat customer group.
+
+<span style="color: #ff4949ff;">**Datasets:**</span><br/>
+Fitbit user data ([Kaggle](https://www.kaggle.com/datasets/arashnic/fitbit), Moebius, survey via Amazon Mechanical Turk): 30 people volunteered, 30 days, 2016<br/> 
+Furberg, R., Brinton, J., Keating, M., & Ortiz, A. (2016). Crowd-sourced Fitbit datasets 03.12.2016-05.12.2016 [Data set], Zenodo.<br/> 
+There is a potential second data set providing newer insights if time permits:<br/>
+Simula ([Norway data set](https://datasets.simula.no/pmdata/), research institute): Fitbit Versa 2, 16 persons, 5 months, 2020<br/> 
+Thambawita, V. et al. (2020),PMData: A Sports Logging Dataset, Association for Computing Machinery. <br/> 
+
+Two research articles could be used to gain further inside of the reasons customers chose to use wearable devices:<br/> 
+1. Maher et al. BMC Public Health (2017) 17:880, [DOI 10.1186/s12889-017-4888-1.](https://bmcpublichealth.biomedcentral.com/articles/10.1186/s12889-017-4888-1)<br/>
+2. [Global GFK user survey 2017](https://www.gfk.com/fileadmin/user_upload/country_one_pager/NL/documents/Global-GfK-survey_Health-Fitness-Monitoring_2016.pdf)<br/> 
+
+
+Table 1. [number of fitbit users](https://www.businessofapps.com/data/fitbit-statistics/), 95% confidence interval. (*source: google course margin of error calculator*)
+
+year     | users [mio] | sample size | margin of error [%] |
+:--------|:------------|:------------|:--------------------|
+2016     | 23.2        | 30          | 17.9                |
+2020     | 31          | 16          | 24.9                |
+combined | 54.2        | 46          | 14.5                |
+
+
+
+```{r, results='hide',warning=FALSE,message=FALSE}
+#preparing libraries
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(janitor)
+library(lubridate)
+library(tidyr)
+library(skimr)
+library(ggpubr)
+theme_set(theme_pubr())
+```
+<span style="color: #ff4949ff;">**Data inspection & cleaning:**</span><br/>
+
+```{r, results='hide'}
+#data loading
+daily_activity_2016 <- read.csv("fitbit_data_kaggle/archive/Fitabase_Data_4_12_16__5_12_16/dailyActivity_merged.csv")
+daily_sleep_2016 <- read.csv("fitbit_data_kaggle/archive/Fitabase_Data_4_12_16__5_12_16/sleepDay_merged.csv")
+weight_2016 <- read.csv("fitbit_data_kaggle/archive/Fitabase_Data_4_12_16__5_12_16/weightLogInfo_merged.csv")
+
+```
+
+## Preview Data 2016{.tabset}
+### Activity
+```{r}
+daily_activity_2016 <- clean_names(daily_activity_2016)
+glimpse(daily_activity_2016)
+```
+### Sleep
+```{r}
+daily_sleep_2016 <- clean_names(daily_sleep_2016)
+glimpse(daily_sleep_2016)
+```
+
+### Weight
+```{r}
+weight_2016 <- clean_names(weight_2016)
+glimpse(weight_2016)
+```
+## {-}
+Adding the weekday to the data will be useful later.  
+```{r}
+days_2016 <- daily_activity_2016 %>%
+  select(activity_date) %>%
+  mutate( 
+    newdate = format(as.Date(activity_date, format = "%m/%d/%Y"), "%Y-%m-%d"),
+    weekday = strftime(newdate, format = "%A"))
+
+head (days_2016)
+  
+```
+How many IDs are there per data set, how many days logged?
+```{r, result = 'hide'}
+num_cust_act <- daily_activity_2016 %>% 
+  summarise(unique_customer=n_unique(id)) 
+days_act <- daily_activity_2016 %>% 
+  group_by(id) %>% 
+  summarise(n_act = n()) 
+
+num_cust_sleep <- daily_sleep_2016 %>%
+  summarise(unique_customer=n_unique(id)) 
+days_sleep <- daily_sleep_2016 %>%
+  group_by(id) %>% 
+  summarise(n_sleep = n()) 
+
+num_cust_weight <- weight_2016 %>% 
+  summarise(unique_customer=n_unique(id)) 
+days_weight <- weight_2016 %>%
+  group_by(id) %>% 
+  summarise(n_weight = n()) 
+```
+```{r}
+num_cust = c(num_cust_act,num_cust_sleep, num_cust_weight)
+x = c("activity", "sleep", "weight")
+num_cust_all <- cbind(x, num_cust)
+head(num_cust_all)
+
+days_logged <- merge(days_act, merge(days_sleep, days_weight, all=TRUE), all = TRUE)
+
+head(days_logged)
+
+```
+How much data is missing? 
+```{r}
+sum(is.na(daily_activity_2016))
+sum(is.na(daily_sleep_2016))
+sum(is.na(weight_2016))
+#percent missing values per variable
+apply(weight_2016, 2, function(col)sum(is.na(col))/length(col))
+```
+# <span style="color: #ff4949ff;">**Summarizing of data:**</span><br/>
+## Functionality usage per user
+```{r}
+#For plotting, the user ID will be chosen between 1-33
+#activity df has the highest number of ids
+new <- 1:33
+days_logged$new_id <- new
+head(days_logged)
+
+```
+```{r , warning=FALSE, message = FALSE}
+df_days_long <- days_logged %>%
+  select (new_id, n_act, n_sleep,n_weight) %>%
+  pivot_longer(names_to = "application", values_to="days", n_act:n_weight)
+p<- ggplot(df_days_long, aes(x=new_id, y=days, fill = application, na.rm = TRUE)) + geom_col(position = position_stack())
+p + labs(title = "Days logged per application", x = "user") + 
+scale_fill_manual(values = c("#00AFBB", "#E7B800", "#FC4E07"), labels=c("Activity", "Sleep", "Weight")) + 
+  theme(legend.title = element_blank())
+```
+<br/>The users predominately log their activity, followed by sleep. I will explore these data sets in more detail.<br/>
+Two users log their weight consistently. Are they trying to lose weight? Are they training for a competition?
+
+```{r , warning=FALSE}
+weight_active_users <- days_logged %>% 
+  filter(new_id ==25 | new_id == 33) %>%
+  select (id)
+head(weight_active_users)
+weight_2016_filtered <- weight_2016 %>%
+  filter(id %in% weight_active_users$id) %>%
+  rename(old_date = date) %>%
+  separate(old_date, into = c("date", "time"), sep = " ", remove = FALSE) %>%
+  mutate(date = lubridate::as_date(date, format = "%m/%d/%Y"))
+head(weight_2016_filtered)
+```
+```{r}
+ggplot(weight_2016_filtered, aes(x=date, y=weight_kg, group=id, color= factor(id))) + geom_line(size=1) + labs (title = "Weight over time", subtitle = "for the two most active users", y = " weight in kg") + theme(legend.position="none") + scale_color_manual(values = c("#00AFBB", "#E7B800"))
+```
+
+<br/>No distinct trend can be found in the limited amount of time. 
+
+## **Sleep logging**<br/>
+How many days do users typically log?<br/>
+```{r, warning = FALSE}
+days_logged %>%
+  select(n_act, n_sleep, n_weight) %>%
+  stack() %>%
+ggplot(aes (x = ind, y=values, na.rm = TRUE, color = ind))+
+  geom_boxplot(width = 0.4, fill = "white") +
+  geom_point(color="black", size=1, alpha=0.9) +
+  theme(aspect.ratio=3, axis.title.x=element_blank(),
+    axis.ticks.x=element_blank(), 
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), 
+    legend.position="none") +
+  scale_x_discrete(labels= c("Activity", "Sleep", "Weight")) + 
+  labs(y = "days", title = "Logging per user") +
+  scale_color_manual(values = c("#00AFBB", "#E7B800", "#FC4E07"))
+
+```
+<br/> The sleep log shows the broadest distribution in loging regularity.
+In the following, the quality of sleep is defined both in length (>6h) and in relation to time awake in bed (>80%).<br/>
+Do users log their sleep when they have a high or low quality of sleep? <br/>
+```{r, warnings = FALSE}
+sleep_qual <- daily_sleep_2016 %>% 
+  select (id, sleep_day, total_minutes_asleep, total_time_in_bed) %>%
+  mutate (per_sleep = total_minutes_asleep/total_time_in_bed*100, 
+          sleep_hours = total_minutes_asleep/60) %>%
+  rename(old_date = sleep_day) %>%
+  separate(old_date, into = c("date", "time"), sep = " ", remove = FALSE) %>%
+  mutate(date = lubridate::as_date(date, format = "%m/%d/%Y"),
+         weekday = strftime(date, format = "%A"))
+
+```
+```{r, warnings = FALSE}
+sleep_qual <- sleep_qual %>% 
+ group_by(id) %>%
+ mutate(new_id = cur_group_id())
+
+
+ggbarplot(sleep_qual, x = "new_id", y = "sleep_hours", 
+          add = c("mean_se", "jitter"),
+          color = "new_id",
+          position = position_dodge(0.8))+
+ theme(axis.title.x=element_blank(), axis.text.x = element_blank(), axis.ticks.x=element_blank(), legend.position="none") +
+ labs(y = "hours", title = "logged sleep per user in hours")+
+  geom_hline(yintercept=6, linetype="dashed", color = "#8b0000")
+```
+```{r, warning = FALSE}
+ggbarplot(sleep_qual, x = "new_id", y = "per_sleep", 
+          add = c("mean_se", "jitter"),
+          color = "new_id",
+          position = position_dodge(0.8))+
+ theme(axis.title.x=element_blank(), axis.text.x = element_blank(), axis.ticks.x=element_blank(), legend.position="none") +
+ labs(y = "time sleeping [%]", title = "logged sleep quality")+
+  geom_hline(yintercept=80, linetype="dashed", color = "#8b0000")
+```
+```{r}
+days <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+sleep_qual %>%
+ggbarplot(x = "weekday", y = "sleep_hours", 
+          add = c("mean_se", "jitter"),
+          color = "weekday",
+          position = position_dodge(0.8),
+          order = days)+
+ theme(axis.title.x=element_blank(), axis.text.x = element_text(vjust = 0.5, hjust=0.3), axis.ticks.x=element_blank(), legend.position="none") +
+ labs(y = "hours", title = "hours of sleep per day")+
+  geom_hline(yintercept=6, linetype="dashed", color = "#8b0000")+
+  scale_x_discrete(labels= c("Mon", "Tue", "Wen", "Thu", "Fri", "Sat","Sun"))
+```
+<br/>Testing for significant difference between weekdays:<br/>
+```{r}
+library(multcompView)
+ANOVA_sleep=aov(sleep_hours ~ weekday, data = sleep_qual)
+summary(ANOVA_sleep)
+tukey_sleep <- TukeyHSD(ANOVA_sleep)
+print(tukey_sleep)
+cld_sleep <- multcompLetters4(ANOVA_sleep, tukey_sleep)
+print(cld_sleep)
+
+```
+
+<br/>Does the sleep quality affect how many days are logged (app problems/ user frustration OR real data?)
+  
+```{r, warning = FALSE, message=FALSE}
+sleepers <- sleep_qual %>%
+  select(new_id, sleep_hours, per_sleep, date) %>%
+  group_by (new_id) %>%
+  summarise (logs = length(date)) 
+bad_sleepers <- sleep_qual %>%
+  select(new_id, sleep_hours, per_sleep, date) %>%
+  group_by (new_id) %>%
+  filter (sleep_hours <6 | per_sleep <80) %>%
+  summarise (bad_logs = length(date))
+
+per_bad_sleep <- merge (sleepers, bad_sleepers) %>%
+  mutate (per_bad = bad_logs/logs*100)
+```
+```{r}
+ggplot (per_bad_sleep, aes(bad_logs, logs, col = alpha(0.8),alpha =0.8)) +
+  geom_point(size = 3) + 
+  theme(legend.position="none") +
+  labs(x = "bad quality", y = "total nights", title = "correlation bad sleep and nights logged")
+```
+```{r}
+ggdotchart(per_bad_sleep, x = "new_id", y = "per_bad", color = "new_id",
+           add = "segments",
+           add.params = list(color = "lightgray", size = 2),
+           sorting = "desc",
+           dot.size = 4,  
+           ggtheme = theme_pubclean())+
+  theme(axis.title.x=element_blank(), axis.text.x = element_blank(), axis.ticks.x=element_blank(), legend.position="none") +
+  labs(x = "User", y = "bad quality [%]", title = "Amount of bad nights")
+```
+<br/>The number of bad nights doesn't affect the logging probability but 8 out of 24 users sleep bad more than half the time.<br/>
+
+## **Activity logging**<br/>
+Most user log consistently.<br/> 
+  
+How active are the user?
+```{r}
+active_minutes_per_user <- daily_activity_2016 %>%
+  group_by(id) %>%
+  mutate(new_id = cur_group_id()) %>%
+  select(new_id, very_active_minutes,fairly_active_minutes, lightly_active_minutes, sedentary_minutes)
+```
+```{r}
+avg_act <- active_minutes_per_user %>%
+  group_by(new_id) %>%
+  summarise (avg_v_act_m = mean (very_active_minutes),
+             avg_f_act_m = mean (fairly_active_minutes),
+             avg_l_act_m = mean (lightly_active_minutes),
+             avg_s_m = mean (sedentary_minutes))
+long_df <- avg_act %>%
+  select(new_id, avg_v_act_m, avg_f_act_m, avg_l_act_m, avg_s_m) %>%
+  pivot_longer(names_to = "activity_level", values_to="minutes", c(avg_v_act_m, avg_f_act_m, avg_l_act_m, avg_s_m)) 
+```
+
+```{r}
+act_levels <- c("avg_v_act_m", "avg_f_act_m", "avg_l_act_m", "avg_s_m")
+ggballoonplot(long_df, x= factor(long_df$activity_level, levels = act_levels), y="new_id", fill = "minutes", na.rm=TRUE, position = position_dodge(0.8), sorting = "none")+
+  scale_fill_viridis_c(option = "C")+
+  theme(aspect.ratio=1)+
+  scale_x_discrete(labels= c("Very", "Fair", "Light", "Sed"))+ 
+  labs (title="Average active minutes per user", 
+        subtitle= "From active to sedetary")
+
+```
+```{r}
+daily_activity_2016 %>%
+ggplot(aes(x = total_steps, y=sedentary_minutes, color = very_active_minutes)) +
+  geom_point()+
+  scale_color_gradient(low="blue", high="red")+
+  labs (title="Sedetary minutes and their influence on daily steps", 
+       x= "total daily steps", y = "total daily sedetary minutes", color="daily very active minutes")+ 
+  theme(legend.position="right")
+```
+```{r}
+steps_day <- daily_activity_2016 %>% 
+  select (activity_date, total_steps) %>%
+  merge (days_2016)
+```
+```{r}
+days <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+steps_day %>%
+ggbarplot(x = "weekday", y = "total_steps", 
+          add = c("mean_se", "jitter"),
+          color = "weekday",
+          position = position_dodge(0.8),
+          order = days)+
+ theme(axis.title.x=element_blank(), axis.text.x = element_text(vjust = 0.5, hjust=0.3), axis.ticks.x=element_blank(), legend.position="none") +
+ labs(y = "total steps", title = "steps per day")+
+  geom_hline(yintercept=10000, linetype="dashed", color = "#8b0000")+
+  scale_x_discrete(labels= c("Mon", "Tue", "Wen", "Thu", "Fri", "Sat","Sun"))
+```
+<br/>Testing for significance:<br/>
+```{r}
+ANOVA_step=aov(total_steps ~ weekday, data = steps_day)
+summary(ANOVA_step)
+tukey_step <- TukeyHSD(ANOVA_step)
+print(tukey_step)
+cld_step <- multcompLetters4(ANOVA_step, tukey_step)
+print(cld_step)
+```
+
+```{r}
+steps_user <- daily_activity_2016 %>% 
+  select (id, total_steps) %>%
+  group_by(id)%>%
+  mutate(new_id = cur_group_id())
+
+
+ggbarplot(steps_user, x = "new_id", y = "total_steps", 
+          add = c("mean_se", "jitter"),
+          color = "new_id",
+          position = position_dodge(0.8))+
+ theme(axis.title.x=element_blank(), axis.text.x = element_blank(), axis.ticks.x=element_blank(), legend.position="none") +
+ labs(y = "total steps", title = "logged steps per day")+
+  geom_hline(yintercept=10000, linetype="dashed", color = "#8b0000")
+```
+<br/>Does the number of steps influence the number of hours slept? <br/>
+
+```{r}
+steps_user_date <- daily_activity_2016 %>%
+  select(id, activity_date, total_steps) %>%
+  mutate(date = lubridate::as_date(activity_date, format = "%m/%d/%Y"))
+
+
+sleep_h_user_date <- sleep_qual %>%
+  select(id, date, sleep_hours)
+
+steps_sleep <- inner_join(steps_user_date, sleep_h_user_date)
+
+```
+```{r, message=FALSE}
+steps_sleep %>%
+ggplot(aes(x = total_steps, y=sleep_hours, color = total_steps)) +
+  geom_point()+geom_smooth()+
+  scale_color_gradient(low="blue", high="red")+
+  labs (title="Daily steps and their influence on sleep hours", 
+       x= "total daily steps", y = "sleep hours", color="steps")+ 
+  theme(legend.position="right")
+```
+```{r}
+active_user_date <- daily_activity_2016 %>%
+  select(id, activity_date, very_active_minutes) %>%
+  mutate(date = lubridate::as_date(activity_date, format = "%m/%d/%Y"))
+
+activ_m_sleep <- inner_join(active_user_date, sleep_h_user_date)
+
+activ_m_sleep %>%
+ggplot(aes(x = very_active_minutes, y=sleep_hours, color = very_active_minutes)) +
+  geom_point()+geom_smooth()+
+  scale_color_gradient(low="blue", high="red")+
+  labs (title="Daily high activity and their influence on sleep hours", 
+       x= "high activity minutes", y = "sleep hours", color="activity minutes")+ 
+  theme(legend.position="right")
+```
+<br/>
+
+
+# <span style="color: #ff4949ff;">**Summary of insights and recommendations:**</span><br/>
+  
+## **Functionality choice**
+User mostly log their daily activity over sleep and rarely log their weight. The data does not allow any conclusions why the user do or don't log their weight due to limit in length of time and number of participants. 
+
+## **Sleep logging**
+The days of logged sleep show the biggest spread between users, which might indicate that user are curious about the data but either the app or device might benefit from improvement. <br/>
+Users with worse quality of sleep do not feel inclined to log less days. One noteworthy trend is the fact that 1/3 of users who log their sleep (8 out of 24), have a bad quality of sleep more than half the time, i.e., they sleep less than 4h or they spend more than 20% of their time in bed being awake. <br/> 
+This information encourages further studies but could also be an important selling point for Bellabeat devices with the connection of the app that offers *personalized coaching and meditation*. <br/> 
+Given the number of users experiencing bad sleep, this could be highlighted in future ad campaigns.<br/>
+Even thought there seems to be a trend towards more sleep on the weekend, no statistical significant difference could be observed. Probably due to sample size.<br/>
+
+## **Activity logging**
+The highest number of users in this study logged their daily activity. For all users, sedentary minutes are predominant. Yet, they are not correlated with the amount of steps the different user achieve per day, rather the highest activity time is. <br/>
+This is an important insight and can be used to market wellness devises even to target audiences who sit during their job. As long, as they increase their high activity time, they can achieve a step count of 10,000 per day (as recommended by the WHO). A number that only 9 out of 33 users reach on average per month, which could indicate that there might be an audience for targeted advertisement of personalized coaching on their health journey. <br/>
+There seems to further be an indication that high activity increases sleep hours, while total steps will not. However, the sample size is too small to draw definite conclusions. <br/>
+In contrast to sleep, the step counts are significantly influenced by the weekday. While Monday, Wednesday, Friday typically have the lowest step count, Tuesday and Saturday have surprisingly the same number. This might be an artifact due to small time frame or could be used in advertisement. Sunday has on average the highest step count out of all day. 
+
+## **Summery**
+This dataset offers a first glimpse of customer behavior that can be used in future advertisement campaigns. The main drawbacks are the short time span and small sample size. Further, gender or age, would also allow more useful conclusions. To overcome this, more volunteer data could be collected and analysed. 
+  
+  
+  
+  
+  
+  
